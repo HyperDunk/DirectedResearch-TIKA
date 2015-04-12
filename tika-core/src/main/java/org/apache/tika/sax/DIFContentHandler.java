@@ -16,54 +16,48 @@
  */
 package org.apache.tika.sax;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Stack;
+
+import org.apache.tika.metadata.Metadata;
 import org.xml.sax.Attributes;
 import org.xml.sax.ContentHandler;
 import org.xml.sax.SAXException;
+import org.xml.sax.helpers.AttributesImpl;
 import org.xml.sax.helpers.DefaultHandler;
 
-import java.util.Stack;
-
 public class DIFContentHandler extends DefaultHandler {
-	
-private static final char[] SPACE = new char[] {' '};
+
+    private static final char[] NEWLINE = new char[] { '\n' };
+    private static final char[] TABSPACE = new char[] { '\t' };
+    private static final String DELIMITER = " : ";
+    private static final Attributes EMPTY_ATTRIBUTES = new AttributesImpl();
     
-    private boolean flag;
     private Stack<String> treeStack;
+    private Stack<String> dataStack;
     private final ContentHandler delegate;
-    private final boolean addSpaceBetweenElements;
-
-    public DIFContentHandler(ContentHandler delegate) {
-    	
-        this(delegate, false);
-        this.flag = false;
-    }
-
-    public DIFContentHandler(ContentHandler delegate, boolean addSpaceBetweenElements) {
-    	this.flag = false;
+    private boolean isLeaf;
+    private Metadata metadata;
+    
+    public DIFContentHandler(ContentHandler delegate, Metadata metadata) {
         this.delegate = delegate;
-        this.addSpaceBetweenElements = addSpaceBetweenElements;
+        this.isLeaf = false;
+        this.metadata = metadata;
         this.treeStack = new Stack<String>();
-        System.out.println("DIFContentHandler - delegate: " + delegate.getClass().getName());
+        this.dataStack = new Stack<String>();
     }
 
     @Override
     public void setDocumentLocator(org.xml.sax.Locator locator) {
-	    delegate.setDocumentLocator(locator);
+        delegate.setDocumentLocator(locator);
     }
 
     @Override
     public void characters(char[] ch, int start, int length)
             throws SAXException {
-    	/*if(this.flag) {
-        	System.out.println(new String(ch, start, length));
-    	}*/
-    	Stack<String> tempStack = (Stack<String>) this.treeStack.clone();
-    	String keyValue = "";
-    	while(!tempStack.isEmpty()) {
-    		keyValue = tempStack.pop() + "-" + keyValue;
-    	}
-    	keyValue = keyValue + " : " + (new String(ch, start, length)).toString();
-        delegate.characters(keyValue.toCharArray(), 0, keyValue.toCharArray().length);
+        String value = (new String(ch, start, length)).toString();
+        this.dataStack.push(value);
     }
 
     @Override
@@ -73,24 +67,56 @@ private static final char[] SPACE = new char[] {' '};
     }
 
     @Override
-    public void startElement(String uri, String localName, String qName, Attributes attributes)
-             throws SAXException {
-    	/*if(uri.equals("http://gcmd.gsfc.nasa.gov/Aboutus/xml/dif/")) {
-        	System.out.println(localName);
-        	this.flag = true;
-    	}*/
-    	this.treeStack.push(localName);
-        if (addSpaceBetweenElements) {
-            delegate.characters(SPACE, 0, SPACE.length);
+    public void startElement(String uri, String localName, String qName,
+            Attributes attributes) throws SAXException {
+        this.isLeaf = true;
+        this.treeStack.push(localName);
+        //delegate.characters(NEWLINE, 0, NEWLINE.length);
+    }
+    
+    private void emitData(String name, String key, String value)
+            throws SAXException {
+        if(name.equals("Southernmost_Latitude") || name.equals("Northernmost_Latitude") 
+                || name.equals("Westernmost_Longitude") || name.equals("Easternmost_Longitude")
+                || name.equals("Dataset_Title") || name.equals("Dataset_Creator")
+                || name.equals("Dataset_Editor")) {
+            this.delegate.characters(NEWLINE, 0, NEWLINE.length);
+            this.delegate.characters(TABSPACE, 0, TABSPACE.length);
+            this.delegate.startElement("", "tr", "tr", EMPTY_ATTRIBUTES);
+            this.delegate.startElement("", "td", "td", EMPTY_ATTRIBUTES);
+            this.delegate.characters(key.toCharArray(), 0, key.length());
+            this.delegate.endElement("", "td", "td");
+            this.delegate.startElement("", "td", "td", EMPTY_ATTRIBUTES);
+            this.delegate.characters(DELIMITER.toCharArray(), 0, DELIMITER.length());
+            this.delegate.endElement("", "td", "td");
+            this.delegate.startElement("", "td", "td", EMPTY_ATTRIBUTES);
+            this.delegate.characters(value.toCharArray(), 0, value.length());
+            this.delegate.endElement("", "td", "td");
+            this.delegate.endElement("", "tr", "tr");
         }
     }
-    
+
     @Override
-    public void endElement (String uri, String localName, String qName)
+    public void endElement(String uri, String localName, String qName)
             throws SAXException {
-    	this.treeStack.pop();
+        if (this.isLeaf) {
+            Stack<String> tempStack = (Stack<String>) this.treeStack.clone();
+            String key = "";            
+            while (!tempStack.isEmpty()) {
+                if (key.length() == 0) {
+                    key = tempStack.pop();
+                } else {
+                    key = tempStack.pop() + "-" + key;
+                }
+            }
+            String value = this.dataStack.peek();
+            emitData(localName, key, value);
+            this.metadata.add(key, value);
+            this.isLeaf = false;
+        }
+        this.treeStack.pop();
+        this.dataStack.pop();
     }
-    
 
     @Override
     public void startDocument() throws SAXException {

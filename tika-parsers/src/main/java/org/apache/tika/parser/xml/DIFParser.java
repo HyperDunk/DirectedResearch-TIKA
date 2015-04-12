@@ -39,10 +39,10 @@ import org.xml.sax.SAXException;
 
 public class DIFParser extends AbstractParser {
 
-    private static final Set<MediaType> SUPPORTED_TYPES =
-            Collections.unmodifiableSet(new HashSet<MediaType>(Arrays.asList(
-                    MediaType.text("dif+xml"))));
-    
+    private static final Set<MediaType> SUPPORTED_TYPES = Collections
+            .unmodifiableSet(new HashSet<MediaType>(Arrays.asList(MediaType
+                    .text("dif+xml"))));
+
     @Override
     public Set<MediaType> getSupportedTypes(ParseContext context) {
         // TODO Auto-generated method stub
@@ -54,16 +54,11 @@ public class DIFParser extends AbstractParser {
             Metadata metadata, ParseContext context) throws IOException,
             SAXException, TikaException {
         // TODO Auto-generated method stub
-        System.out.println(handler.getClass().getName());
-        System.out.println(handler.toString());
-        System.out.println(context.getClass().toString());
-        System.out.println(metadata.toString());
-        
-        final XHTMLContentHandler xhtml =
-            new XHTMLContentHandler(handler, metadata);
+        final XHTMLContentHandler xhtml = new XHTMLContentHandler(handler,
+                metadata);
         xhtml.startDocument();
         xhtml.startElement("p");
-
+        xhtml.startElement("table");
         TaggedContentHandler tagged = new TaggedContentHandler(handler);
         try {
             context.getSAXParser().parse(
@@ -74,17 +69,18 @@ public class DIFParser extends AbstractParser {
             tagged.throwIfCauseOf(e);
             throw new TikaException("XML parse error", e);
         } finally {
+            xhtml.endElement("table");
             xhtml.endElement("p");
             xhtml.endDocument();
         }
 
     }
-    
-    protected ContentHandler getContentHandler(
-            ContentHandler handler, Metadata metadata, ParseContext context) {
-                
-        return new DIFContentHandler(handler, true);
+
+    protected ContentHandler getContentHandler(ContentHandler handler,
+            Metadata metadata, ParseContext context) {
         
+        return new DIFContentHandler(handler, metadata);
+
     }
 
 }
